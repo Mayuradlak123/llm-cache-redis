@@ -1,0 +1,118 @@
+# Highly-available Redis for llm-cache: 1 master + 2 replicas + 3 Sentinels.
+#
+#   docker compose -f docker-compose.ha.yml up -d
+#
+# The plain single-node setup in docker-compose.yml is still the default and is
+# all you need for development. Use this one to exercise replication, WAIT and
+# failover.
+#
+# Why three Sentinels, not two: a failover needs a majority of Sentinels alive to
+# elect a leader. With two, losing one leaves no majority and nothing can be
+# promoted. Three tolerates one failure. Always run an odd number >= 3.
+#
+# HOST ACCESS CAVEAT: Sentinel hands clients the master's address as it sees it,
+# which here is a container IP on the compose network. That address is reachable
+# from inside the network but usually not from your host. So either run your app
+# as a service on this network, or talk to redis-master:6379 directly on the
+# published port (127.0.0.1:6379) and accept that you are bypassing failover.
+# `sentinel announce-ip` below makes the Sentinels themselves addressable.
+
+x-redis-health: &redis-health
+  healthcheck:
+    test: ["CMD", "redis-cli", "ping"]
+    interval: 5s
+    timeout: 3s
+    retries: 5
+
+services:
+  redis-master:
+    image: redis:7-alpine
+    container_name: llm-cache-master
+    ports:
+      - "6379:6379"
+    command:
+      - redis-server
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+      # min-replicas-to-write is the server-side counterpart to WAIT: with this
+      # set, the master REFUSES writes when fewer than N replicas are connected.
+      # Left at 0 because a cache should stay writable in a degraded cluster;
+      # the client-side WAIT reports the shortfall instead of rejecting.
+      - --min-replicas-to-write
+      - "0"
+    <<: *redis-health
+
+  redis-replica-1: &replica
+    image: redis:7-alpine
+    container_name: llm-cache-replica-1
+    ports:
+      - "6380:6379"
+    depends_on:
+      redis-master:
+        condition: service_healthy
+    command:
+      - redis-server
+      - --replicaof
+      - redis-master
+      - "6379"
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+      - --replica-read-only
+      - "yes"
+    <<: *redis-health
+
+  redis-replica-2:
+    <<: *replica
+    container_name: llm-cache-replica-2
+    ports:
+      - "6381:6379"
+
+  sentinel-1: &sentinel
+    image: redis:7-alpine
+    container_name: llm-cache-sentinel-1
+    ports:
+      - "26379:26379"
+    depends_on:
+      redis-master:
+        condition: service_healthy
+    # Sentinel rewrites its own config file at runtime, so it is generated into a
+    # writable path at startup rather than bind-mounted read-only.
+    #
+    #   quorum 2  -> two Sentinels must agree the master is down to start a failover.
+    #                Agreeing to fail over is separate from electing the Sentinel
+    #                that performs it, which always needs a majority (2 of 3).
+    command:
+      - sh
+      - -c
+      - |
+        cat > /tmp/sentinel.conf <<EOF
+        port 26379
+        sentinel resolve-hostnames yes
+        sentinel announce-hostnames yes
+        sentinel monitor llm-cache-master redis-master 6379 2
+        sentinel down-after-milliseconds llm-cache-master 5000
+        sentinel failover-timeout llm-cache-master 10000
+        sentinel parallel-syncs llm-cache-master 1
+        EOF
+        exec redis-sentinel /tmp/sentinel.conf
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "26379", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  sentinel-2:
+    <<: *sentinel
+    container_name: llm-cache-sentinel-2
+    ports:
+      - "26380:26379"
+
+  sentinel-3:
+    <<: *sentinel
+    container_name: llm-cache-sentinel-3
+    ports:
+      - "26381:26379"
