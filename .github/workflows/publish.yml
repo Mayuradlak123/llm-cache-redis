@@ -2,22 +2,28 @@ name: Publish to PyPI
 
 # Publishing is triggered by cutting a GitHub Release, so the tag and the
 # PyPI version always match something a human deliberately created.
+#
+# NOTE: a *draft* release does not fire this event. The release must be
+# published for the workflow to run at all.
 on:
   release:
     types: [published]
   workflow_dispatch:
-    inputs:
-      target:
-        description: Where to publish
-        required: true
-        default: testpypi
-        type: choice
-        options: [testpypi, pypi]
 
+# One job that builds and publishes, deliberately: splitting it means handing
+# the distributions between jobs as artifacts, which is an extra failure
+# surface for no benefit at this size.
 jobs:
-  build:
-    name: Build distributions
+  build-n-publish:
+    name: Build and publish to PyPI
     runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/llm-cache-redis
+    permissions:
+      id-token: write # Mandatory for Trusted Publishing
+      contents: read # Declaring `permissions` sets everything else to none
+
     steps:
       - uses: actions/checkout@v4
 
@@ -38,49 +44,8 @@ jobs:
       - name: Build sdist and wheel
         run: uv build
 
-      # `uv tool run` fetches twine into its own environment. Never
-      # `uv pip install --system`: the runner's Python is externally managed
-      # (PEP 668) and refuses installs.
-      - name: Check metadata
+      - name: Check metadata renders on PyPI
         run: uv tool run twine check dist/*
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: dist
-          path: dist/
-
-  publish-testpypi:
-    name: Publish to TestPyPI
-    needs: build
-    if: github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi'
-    runs-on: ubuntu-latest
-    environment:
-      name: testpypi
-      url: https://test.pypi.org/p/llm-cache-redis
-    permissions:
-      id-token: write # Trusted Publishing; no API token stored in the repo
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist/
-      - uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          repository-url: https://test.pypi.org/legacy/
-
-  publish-pypi:
-    name: Publish to PyPI
-    needs: build
-    if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.target == 'pypi')
-    runs-on: ubuntu-latest
-    environment:
-      name: pypi
-      url: https://pypi.org/p/llm-cache-redis
-    permissions:
-      id-token: write # Mandatory for Trusted Publishing
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist/
-      - uses: pypa/gh-action-pypi-publish@release/v1
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
