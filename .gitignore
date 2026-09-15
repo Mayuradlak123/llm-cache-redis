@@ -9,3 +9,6 @@ build/
 .mypy_cache/
 .ruff_cache/
 .env
+
+# Local demo app (Groq + Tailwind UI); not part of the published library
+demo/

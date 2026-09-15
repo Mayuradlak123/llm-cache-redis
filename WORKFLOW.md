@@ -219,8 +219,8 @@ parts without touching the cache logic:
 | Substitute | For | Example |
 | --- | --- | --- |
 | any object with `.embed(text)` | the embedding model | a hosted embedding API |
-| any object with `hset`/`hgetall`/`scan_iter`/`expire`/`delete`/`wait`/`info` | the Redis client | `demo/memory_store.py`, which runs the cache with no Redis at all |
-| any `Callable[[str], str]` | the LLM | `demo/groq_llm.py` |
+| any object with `hset`/`hgetall`/`scan_iter`/`expire`/`delete`/`wait`/`info` | the Redis client | an in-process dict, to run the cache with no Redis at all |
+| any `Callable[[str], str]` | the LLM | a thin wrapper over any provider's HTTP API |
 
-`demo/memory_store.py` is the clearest illustration: about 80 lines, no Redis, and the cache
-behaves identically.
+Roughly 80 lines of dict-backed stand-in is enough to run the whole cache with no Redis at
+all, which is the clearest illustration that the seam is real.
