@@ -55,7 +55,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: testpypi
-      url: https://test.pypi.org/p/llm-cache
+      url: https://test.pypi.org/p/llm-cache-redis
     permissions:
       id-token: write # Trusted Publishing; no API token stored in the repo
     steps:
@@ -74,7 +74,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/p/llm-cache
+      url: https://pypi.org/p/llm-cache-redis
     permissions:
       id-token: write # Mandatory for Trusted Publishing
     steps:

@@ -1,5 +1,5 @@
 [project]
-name = "llm-cache"
+name = "llm-cache-redis"
 version = "0.1.0"
 description = "Lightweight semantic caching for LLM applications, backed by Redis."
 readme = "README.md"
