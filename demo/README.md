@@ -75,6 +75,22 @@ The gap between "Requests" and "LLM calls made" is what the cache saved you.
 | `config.py` | `.env` loader and typed settings. |
 | `memory_store.py` | In-process Redis stand-in for running without Docker. |
 
+## Troubleshooting
+
+**`Error 1010: Access denied` / HTTP 403 from Cloudflare.** Groq sits behind Cloudflare, which
+rejects urllib's default `User-Agent: Python-urllib/3.x` outright — the request never reaches
+Groq, so no API key can fix it. `groq_llm.py` sends an explicit `USER_AGENT`; if you copy the
+adapter elsewhere, keep that header.
+
+**HTTP 401 `Invalid API Key`.** The request reached Groq, so Cloudflare is fine — check
+`GROQ_API_KEY` in `.env`. Note the demo reads `.env` at startup, so restart the server after
+editing it.
+
+**HTTP 404 on the model.** Check `GROQ_MODEL`; model ids are retired over time. Current list:
+<https://console.groq.com/docs/models>.
+
+**HTTP 429.** Rate limited. The cache helps here — every HIT is a request you did not send.
+
 ## Flags
 
 ```bash

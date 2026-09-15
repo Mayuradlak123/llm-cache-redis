@@ -25,6 +25,13 @@ from dataclasses import dataclass, field
 API_URL = "https://api.groq.com/openai/v1/chat/completions"
 DEFAULT_MODEL = "llama-3.3-70b-versatile"
 
+# Groq sits behind Cloudflare, which rejects urllib's default
+# ``User-Agent: Python-urllib/3.x`` with "Error 1010: Access denied"
+# (browser_signature_banned) before the request ever reaches the API. Any
+# explicit User-Agent gets through, so identify ourselves honestly rather than
+# impersonating a browser.
+USER_AGENT = "llm-cache-demo/0.1.0 (+https://github.com/Mayuradlak123/llm-cache)"
+
 
 class GroqError(RuntimeError):
     """The Groq API could not be reached, or refused the request."""
@@ -106,6 +113,7 @@ def make_groq_llm(
                 "Authorization": f"Bearer {key}",
                 "Content-Type": "application/json",
                 "Accept": "application/json",
+                "User-Agent": USER_AGENT,
             },
             method="POST",
         )
@@ -116,8 +124,8 @@ def make_groq_llm(
         try:
             raw = send(request, timeout)
         except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", "replace")[:400]
-            raise GroqError(f"Groq returned HTTP {exc.code}: {detail}") from exc
+            detail = exc.read().decode("utf-8", "replace")
+            raise GroqError(_explain_http_error(exc.code, detail)) from exc
         except urllib.error.URLError as exc:
             raise GroqError(f"could not reach Groq: {exc.reason}") from exc
         elapsed_ms = (time.perf_counter() - started) * 1000.0
@@ -131,6 +139,37 @@ def make_groq_llm(
         return text
 
     return call
+
+
+def _explain_http_error(status: int, body: str) -> str:
+    """Turn an HTTP failure into something you can act on.
+
+    Groq's own errors arrive as JSON; Cloudflare's arrive as its own error
+    document and mean the request never reached Groq at all.
+    """
+    if "error_code" in body and "1010" in body:
+        return (
+            "blocked by Cloudflare before reaching Groq (Error 1010, "
+            "browser_signature_banned). This happens when the request has no "
+            "User-Agent header — check that USER_AGENT is still being sent."
+        )
+
+    message = body.strip()[:400]
+    try:
+        parsed = json.loads(body)
+        if isinstance(parsed, dict) and isinstance(parsed.get("error"), dict):
+            message = str(parsed["error"].get("message", message))
+    except json.JSONDecodeError:
+        pass
+
+    hints = {
+        401: "check GROQ_API_KEY in your .env",
+        403: "the key may lack access to this model",
+        404: "check GROQ_MODEL — the model id may not exist",
+        429: "rate limited; wait and retry, or lower your request rate",
+    }
+    hint = hints.get(status)
+    return f"Groq returned HTTP {status}: {message}" + (f" ({hint})" if hint else "")
 
 
 def _send(request: urllib.request.Request, timeout: float) -> bytes:
