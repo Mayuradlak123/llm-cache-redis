@@ -38,10 +38,11 @@ jobs:
       - name: Build sdist and wheel
         run: uv build
 
+      # `uv tool run` fetches twine into its own environment. Never
+      # `uv pip install --system`: the runner's Python is externally managed
+      # (PEP 668) and refuses installs.
       - name: Check metadata
-        run: |
-          uv pip install --system twine
-          twine check dist/*
+        run: uv tool run twine check dist/*
 
       - uses: actions/upload-artifact@v4
         with:

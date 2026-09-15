@@ -27,27 +27,29 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
+          python-version: ${{ matrix.python-version }}
 
-      - name: Set up Python ${{ matrix.python-version }}
-        run: uv python install ${{ matrix.python-version }}
-
+      # A project venv, never `--system`: the runner's system Python is
+      # externally managed (PEP 668) and refuses installs.
       - name: Install the project
-        run: uv pip install --system -e ".[dev]"
+        run: |
+          uv venv
+          uv pip install -e ".[dev]"
 
       - name: Lint
-        run: ruff check .
+        run: uv run --no-sync ruff check .
 
       - name: Check formatting
-        run: ruff format --check .
+        run: uv run --no-sync ruff format --check .
 
       - name: Type check
-        run: mypy src
+        run: uv run --no-sync mypy src
 
-      - name: Verify the package imports from a clean install
-        run: python -c "import llm_cache; print(llm_cache.__version__)"
+      - name: Verify the package imports
+        run: uv run --no-sync python -c "import llm_cache; print(llm_cache.__version__)"
 
       - name: Verify the CLI entry point
-        run: llm-cache --help
+        run: uv run --no-sync llm-cache --help
 
   build:
     name: Build distributions
@@ -61,10 +63,10 @@ jobs:
       - name: Build sdist and wheel
         run: uv build
 
+      # `uv tool run` fetches twine into its own environment, so nothing is
+      # installed into the runner's Python.
       - name: Check metadata renders on PyPI
-        run: |
-          uv pip install --system twine
-          twine check dist/*
+        run: uv tool run twine check dist/*
 
       - uses: actions/upload-artifact@v4
         with:
