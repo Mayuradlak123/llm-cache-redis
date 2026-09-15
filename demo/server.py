@@ -3,7 +3,7 @@
 Standard library only — no FastAPI, no Flask — because the demo should not add
 dependencies to a library whose whole point is staying small.
 
-    cp .env.example .env     # then set MISTRAL_API_KEY
+    cp .env.example .env     # then set GROQ_API_KEY
     uv run python demo/server.py
 
 Flags:

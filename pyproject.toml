@@ -38,7 +38,6 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.0",
     "ruff>=0.6",
     "mypy>=1.11",
 ]
@@ -65,7 +64,6 @@ packages = ["src/llm_cache"]
 [tool.hatch.build.targets.sdist]
 include = [
     "/src",
-    "/tests",
     "/examples",
     "/README.md",
     "/WORKFLOW.md",
@@ -86,6 +84,3 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 python_version = "3.12"
 strict = true
 ignore_missing_imports = true
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]

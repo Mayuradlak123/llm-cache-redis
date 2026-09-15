@@ -82,11 +82,3 @@ uv run python demo/server.py --fake-llm   # never call Groq
 uv run python demo/server.py --memory     # skip Redis
 ```
 
-## Tests
-
-`tests/test_demo.py` covers the adapter and config with the HTTP transport substituted, so it
-runs offline and needs no API key:
-
-```bash
-uv run pytest tests/test_demo.py -q
-```

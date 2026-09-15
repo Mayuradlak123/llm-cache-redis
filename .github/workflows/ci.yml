@@ -1,4 +1,4 @@
-name: Tests
+name: CI
 
 on:
   push:
@@ -11,13 +11,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
-    name: Python ${{ matrix.python-version }}
+  check:
+    name: Lint & types (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        # The package requires >=3.12; test every version it claims to support.
+        # The package requires >=3.12; check every version it claims to support.
         python-version: ["3.12", "3.13"]
 
     steps:
@@ -43,13 +43,11 @@ jobs:
       - name: Type check
         run: mypy src
 
-      # The suite runs fully offline against fakes: no Redis service container
-      # and no embedding model download are needed.
-      - name: Test
-        run: pytest -q
-
       - name: Verify the package imports from a clean install
         run: python -c "import llm_cache; print(llm_cache.__version__)"
+
+      - name: Verify the CLI entry point
+        run: llm-cache --help
 
   build:
     name: Build distributions

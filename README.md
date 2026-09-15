@@ -408,10 +408,15 @@ invalidation, streaming response caching, and multimodal caching.
 ## Development
 
 ```bash
-uv run pytest        # tests run fully offline, no Redis or model download needed
 uv run ruff check .
+uv run ruff format .
 uv run mypy src
+uv build
 ```
+
+There is no test suite in the repository: it was removed by request. The suite that existed
+(79 tests covering hit/miss behaviour, TTL, namespaces, cache identity, failure fallback,
+replication and the demo adapter) is recoverable from git history at commit `9996072`.
 
 ## License
 

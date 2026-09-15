@@ -210,23 +210,17 @@ exception type crossing the boundary.
 
 ---
 
-## 6. How the tests mirror this
+## 6. Swapping the pieces out
 
-Tests never touch real Redis or a real model — they substitute doubles at the two boundaries the
-design already isolated (`tests/conftest.py`):
+`LLMCache.__init__` (`cache.py:47`) accepts `embeddings=` and `store=`, and `RedisStore` accepts
+any `client` implementing the handful of commands it uses. That is the seam for substituting
+parts without touching the cache logic:
 
-| Fake | Replaces | Used for |
+| Substitute | For | Example |
 | --- | --- | --- |
-| `FakeRedis` | the `redis.Redis` client | all cache behavior, instantly |
-| `FakeClock` | wall-clock time inside `FakeRedis` | TTL expiry, without sleeping |
-| `BrokenRedis` | a client whose every command raises | the Redis-outage fallback |
-| `FakeEmbeddings` | the embedding provider | fixed topic vectors, so similarity is predictable |
-| `FailingEmbeddings` | the embedding provider | the embedding-failure fallback |
-| `CountingLLM` | your `llm` callable | proving the LLM is called on MISS and *not* on HIT |
+| any object with `.embed(text)` | the embedding model | a hosted embedding API |
+| any object with `hset`/`hgetall`/`scan_iter`/`expire`/`delete`/`wait`/`info` | the Redis client | `demo/memory_store.py`, which runs the cache with no Redis at all |
+| any `Callable[[str], str]` | the LLM | `demo/groq_llm.py` |
 
-That whole substitution is possible because `LLMCache.__init__` (`cache.py:34`) accepts
-`embeddings=` and `store=`. The full suite runs in about 0.2 seconds, offline.
-
-```bash
-uv run pytest -q
-```
+`demo/memory_store.py` is the clearest illustration: about 80 lines, no Redis, and the cache
+behaves identically.
