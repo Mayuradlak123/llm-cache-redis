@@ -30,7 +30,7 @@ Every value the demo uses comes from `.env`, with real environment variables tak
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `GROQ_API_KEY` | — | Your key. Without it the demo uses a local stand-in. |
-| `GROQ_MODEL` | `llama-3.3-70b-versatile` | Model id sent to the API. |
+| `GROQ_MODEL` | `openai/gpt-oss-20b` | Model id sent to the API. List yours with `--list-models`. |
 | `TEMPERATURE` | `0.2` | Sampling temperature — also part of the cache identity. |
 | `REDIS_URL` | `redis://localhost:6379` | Where to cache. |
 | `SIMILARITY_THRESHOLD` | `0.90` | Cosine similarity required for a HIT. |
@@ -86,8 +86,17 @@ adapter elsewhere, keep that header.
 `GROQ_API_KEY` in `.env`. Note the demo reads `.env` at startup, so restart the server after
 editing it.
 
-**HTTP 404 on the model.** Check `GROQ_MODEL`; model ids are retired over time. Current list:
-<https://console.groq.com/docs/models>.
+**HTTP 404 `The model ... does not exist or you do not have access to it`.** Groq's published
+catalogue is not the same as the list *your* key can call — the widely documented `llama-*` ids
+are missing from many keys. Do not guess; ask the API:
+
+```bash
+uv run python demo/server.py --list-models
+```
+
+Then set `GROQ_MODEL` in `.env` to one of the ids it prints. The server also checks this at
+startup and refuses to start with the usable list in the error, rather than letting you discover
+it on your first question.
 
 **HTTP 429.** Rate limited. The cache helps here — every HIT is a request you did not send.
 

@@ -8,8 +8,9 @@ dependencies to a library whose whole point is staying small.
 
 Flags:
 
-    --fake-llm   answer locally instead of calling Groq (no API key needed)
-    --memory     skip Redis entirely and use the in-process store
+    --fake-llm      answer locally instead of calling Groq (no API key needed)
+    --memory        skip Redis entirely and use the in-process store
+    --list-models   print the model ids this API key can use, then exit
 """
 
 from __future__ import annotations
@@ -25,7 +26,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from config import load_settings  # noqa: E402
-from groq_llm import GroqError, GroqStats, make_groq_llm  # noqa: E402
+from groq_llm import GroqError, GroqStats, list_models, make_groq_llm  # noqa: E402
 from memory_store import MemoryRedis  # noqa: E402
 
 from llm_cache import LLMCache  # noqa: E402
@@ -87,11 +88,29 @@ class Demo:
                 temperature=self.settings.temperature,
                 stats=self.groq_stats,
             )
+            self._check_model_access()
             return llm, f"groq ({self.settings.groq_model})", None
         except GroqError as exc:
             # Keep serving: the UI shows the reason and the page still works
             # for everything that does not need the API.
             return _fake_llm, "fake (local echo)", str(exc)
+
+    def _check_model_access(self) -> None:
+        """Fail at startup, not on the first question, if GROQ_MODEL is unusable.
+
+        Groq's published model list is not the same as the one a given key can
+        call, so this asks the API and names the alternatives instead of leaving
+        you to discover a 404 mid-demo.
+        """
+        available = list_models(self.settings.groq_api_key)
+        if self.settings.groq_model in available:
+            return
+        listing = "\n    ".join(available[:20]) or "(none returned)"
+        raise GroqError(
+            f"GROQ_MODEL={self.settings.groq_model!r} is not available to this API key.\n"
+            f"  Models this key can use:\n    {listing}\n"
+            f"  Set GROQ_MODEL in .env to one of those."
+        )
 
     # -- request handling ---------------------------------------------------
 
@@ -199,7 +218,23 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="llm-cache demo server")
     parser.add_argument("--fake-llm", action="store_true", help="do not call Groq")
     parser.add_argument("--memory", action="store_true", help="skip Redis, use memory")
+    parser.add_argument(
+        "--list-models", action="store_true", help="print usable model ids and exit"
+    )
     args = parser.parse_args(argv)
+
+    if args.list_models:
+        settings = load_settings()
+        try:
+            models = list_models(settings.groq_api_key)
+        except GroqError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        print(f"Models available to this key ({len(models)}):")
+        for model in models:
+            marker = "  <- GROQ_MODEL" if model == settings.groq_model else ""
+            print(f"  {model}{marker}")
+        return 0
 
     demo = Demo(force_memory=args.memory, force_fake=args.fake_llm)
     Handler.demo = demo

@@ -9,7 +9,7 @@ Uses ``urllib`` from the standard library rather than an SDK, so the demo adds
 no dependencies to the project.
 
     export GROQ_API_KEY=...
-    llm = make_groq_llm(model="llama-3.3-70b-versatile")
+    llm = make_groq_llm(model="openai/gpt-oss-20b")
     llm("What is Docker?")
 """
 
@@ -23,7 +23,14 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 API_URL = "https://api.groq.com/openai/v1/chat/completions"
-DEFAULT_MODEL = "llama-3.3-70b-versatile"
+MODELS_URL = "https://api.groq.com/openai/v1/models"
+
+# Groq's published catalogue is NOT the same as the list any given key can call:
+# a 404 "does not exist or you do not have access to it" means the model is real
+# but your tier cannot reach it. The llama-* ids are the usual example — widely
+# documented, absent from many keys. Run `python demo/server.py --list-models`
+# to see yours, and set GROQ_MODEL in .env accordingly.
+DEFAULT_MODEL = "openai/gpt-oss-20b"
 
 # Groq sits behind Cloudflare, which rejects urllib's default
 # ``User-Agent: Python-urllib/3.x`` with "Error 1010: Access denied"
@@ -76,7 +83,9 @@ def make_groq_llm(
     api_key: str | None = None,
     temperature: float = 0.2,
     system_prompt: str | None = None,
-    max_tokens: int = 512,
+    # Generous by default: reasoning models spend part of this budget on
+    # `reasoning` before emitting any answer at all.
+    max_tokens: int = 1024,
     timeout: float = 60.0,
     stats: GroqStats | None = None,
     opener: Callable[[urllib.request.Request, float], bytes] | None = None,
@@ -141,6 +150,50 @@ def make_groq_llm(
     return call
 
 
+def list_models(
+    api_key: str | None = None,
+    *,
+    timeout: float = 30.0,
+    opener: Callable[[urllib.request.Request, float], bytes] | None = None,
+) -> list[str]:
+    """Return the model ids this API key can actually use, sorted.
+
+    Groq's published model list is not the same as *your* list: a key on one
+    tier gets a 404 for models another tier can call. This asks the API rather
+    than guessing.
+    """
+    key = api_key or os.environ.get("GROQ_API_KEY")
+    if not key:
+        raise GroqError("GROQ_API_KEY is not set, so the model list cannot be fetched.")
+
+    request = urllib.request.Request(
+        MODELS_URL,
+        headers={
+            "Authorization": f"Bearer {key}",
+            "Accept": "application/json",
+            "User-Agent": USER_AGENT,
+        },
+        method="GET",
+    )
+    send = opener or _send
+    try:
+        raw = send(request, timeout)
+    except urllib.error.HTTPError as exc:
+        raise GroqError(
+            _explain_http_error(exc.code, exc.read().decode("utf-8", "replace"))
+        ) from exc
+    except urllib.error.URLError as exc:
+        raise GroqError(f"could not reach Groq: {exc.reason}") from exc
+
+    try:
+        body = json.loads(raw.decode("utf-8"))
+        entries = body["data"]
+    except (UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError) as exc:
+        raise GroqError(f"unexpected model list response: {exc}") from exc
+
+    return sorted(str(item["id"]) for item in entries if isinstance(item, dict) and "id" in item)
+
+
 def _explain_http_error(status: int, body: str) -> str:
     """Turn an HTTP failure into something you can act on.
 
@@ -165,7 +218,10 @@ def _explain_http_error(status: int, body: str) -> str:
     hints = {
         401: "check GROQ_API_KEY in your .env",
         403: "the key may lack access to this model",
-        404: "check GROQ_MODEL — the model id may not exist",
+        404: (
+            "the model does not exist, or your key's tier cannot reach it — "
+            "run 'python demo/server.py --list-models' to see what yours can use"
+        ),
         429: "rate limited; wait and retry, or lower your request rate",
     }
     hint = hints.get(status)
@@ -185,12 +241,29 @@ def _parse(raw: bytes) -> tuple[str, dict[str, object]]:
         raise GroqError(f"Groq returned a non-JSON body: {exc}") from exc
 
     try:
-        content = body["choices"][0]["message"]["content"]
+        choice = body["choices"][0]
+        content = choice["message"]["content"]
     except (KeyError, IndexError, TypeError) as exc:
         raise GroqError(f"unexpected Groq response shape: {body!r}"[:400]) from exc
 
-    if not isinstance(content, str):
+    if content is not None and not isinstance(content, str):
         raise GroqError(f"expected a string response, got {type(content).__name__}")
+
+    # Reasoning models (openai/gpt-oss-*, qwen3) split their output into
+    # `reasoning` and `content`. When max_tokens runs out mid-reasoning the
+    # answer itself is never emitted and `content` is empty. Returning that
+    # would let the cache store an empty answer permanently, so refuse it.
+    if not (content or "").strip():
+        finish = str(choice.get("finish_reason", "unknown"))
+        reasoning = str(choice.get("message", {}).get("reasoning") or "")
+        if finish == "length":
+            raise GroqError(
+                "the model used its whole token budget on reasoning and returned "
+                "no answer. Raise max_tokens (reasoning models such as "
+                "openai/gpt-oss-* need room for both) or pick a non-reasoning model."
+            )
+        detail = f" (reasoning: {reasoning[:120]}...)" if reasoning else ""
+        raise GroqError(f"Groq returned an empty answer, finish_reason={finish}{detail}")
 
     usage = body.get("usage") or {}
     return content, usage if isinstance(usage, dict) else {}

@@ -86,7 +86,7 @@ class Settings:
     ttl: int | None = 3600
     namespace: str = "example"
     groq_api_key: str | None = None
-    groq_model: str = "llama-3.3-70b-versatile"
+    groq_model: str = "openai/gpt-oss-20b"
     temperature: float = 0.2
     host: str = "127.0.0.1"
     port: int = 8000
@@ -117,7 +117,7 @@ def load_settings(path: Path | None = None) -> Settings:
         ttl=_int_or_none("TTL", 3600),
         namespace=_str("NAMESPACE", "example"),
         groq_api_key=os.environ.get("GROQ_API_KEY") or None,
-        groq_model=_str("GROQ_MODEL", "llama-3.3-70b-versatile"),
+        groq_model=_str("GROQ_MODEL", "openai/gpt-oss-20b"),
         temperature=_float("TEMPERATURE", 0.2),
         host=_str("HOST", "127.0.0.1"),
         port=int(_float("PORT", 8000)),
