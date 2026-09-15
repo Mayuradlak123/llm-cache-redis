@@ -43,11 +43,11 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/Mayuradlak123/llm-cache"
-Repository = "https://github.com/Mayuradlak123/llm-cache"
-Documentation = "https://github.com/Mayuradlak123/llm-cache#readme"
-"Bug Tracker" = "https://github.com/Mayuradlak123/llm-cache/issues"
-Changelog = "https://github.com/Mayuradlak123/llm-cache/releases"
+Homepage = "https://github.com/Mayuradlak123/llm-cache-redis"
+Repository = "https://github.com/Mayuradlak123/llm-cache-redis"
+Documentation = "https://github.com/Mayuradlak123/llm-cache-redis#readme"
+"Bug Tracker" = "https://github.com/Mayuradlak123/llm-cache-redis/issues"
+Changelog = "https://github.com/Mayuradlak123/llm-cache-redis/releases"
 
 [project.scripts]
 llm-cache = "llm_cache.cli:main"
